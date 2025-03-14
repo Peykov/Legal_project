@@ -3,15 +3,25 @@
 
 # Install Unsloth
 # %%capture
-!pip install unsloth
-# Get the latest nightly Unsloth
-!pip uninstall unsloth -y && pip install --upgrade --no-cache-dir --no-deps git+https://github.com/unslothai/unsloth.git
+# pip install unsloth
+# # Get the latest nightly Unsloth
+# pip uninstall unsloth -y && pip install --upgrade --no-cache-dir --no-deps git+https://github.com/unslothai/unsloth.git
+
+# # Install Flash Attention 2 for softcapping support
+# import torch
+# if torch.cuda.get_device_capability()[0] >= 8:
+#     !pip install --no-deps packaging ninja einops "flash-attn>=2.6.3"
 
 # Install Flash Attention 2 for softcapping support
 import torch
-if torch.cuda.get_device_capability()[0] >= 8:
-    !pip install --no-deps packaging ninja einops "flash-attn>=2.6.3"
+import subprocess
+import sys
 
+if torch.cuda.get_device_capability()[0] >= 8:
+    # Use subprocess to install packages when running as a script
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "--no-deps", 
+                          "packaging", "ninja", "einops", "flash-attn>=2.6.3"])
+    
 from unsloth import FastLanguageModel
 import torch
 max_seq_length = 2048  # You can adjust this based on your document length
@@ -64,8 +74,8 @@ def load_markdown_files(file_paths):
 
 # File paths to your markdown documents
 md_file_paths = [
-    "transciptions/summary_20250220.md", 
-    "transciptions/summary_20250225.md"
+    "../transciptions/summary_20250220.md", 
+    "../transciptions/summary_20250225.md"
 ]
 
 # Load the documents
