@@ -97,7 +97,6 @@ for doc in documents:
     all_chunks.extend(chunk_text(doc))
 
 # Format data as expected by the model
-EOS_TOKEN = tokenizer.eos_token
 formatted_texts = []
 
 # Simple document format
@@ -105,7 +104,7 @@ document_format = """Knowledge Document:
 {}"""
 
 for chunk in all_chunks:
-    formatted_text = document_format.format(chunk) + EOS_TOKEN
+    formatted_text = document_format.format(chunk)
     formatted_texts.append(formatted_text)
 
 # Create a dataset
@@ -116,43 +115,51 @@ print(f"Created dataset with {len(dataset)} examples")
 print("\nSample example:")
 print(dataset[0]["text"][:500] + "...")
 
+# Set up the DataCollatorForLanguageModeling for continued pretraining
+from transformers import DataCollatorForLanguageModeling
+
+data_collator = DataCollatorForLanguageModeling(
+    tokenizer=tokenizer,
+    mlm=False  # We're doing causal language modeling, not masked language modeling
+)
+
+# Tokenize the dataset
+def tokenize_function(examples):
+    return tokenizer(examples["text"], truncation=True, max_length=max_seq_length)
+
+tokenized_dataset = dataset.map(
+    tokenize_function,
+    batched=True,
+    num_proc=2,
+    remove_columns=["text"]
+)
+
 # Set up the UnslothTrainer for continued pretraining
-from transformers import TrainingArguments
+from transformers import Trainer, TrainingArguments
 from unsloth import is_bfloat16_supported
-from unsloth import UnslothTrainer, UnslothTrainingArguments
 
-trainer = UnslothTrainer(
-    model = model,
-    tokenizer = tokenizer,
-    train_dataset = dataset,
-    dataset_text_field = "text",
-    max_seq_length = max_seq_length,
-    dataset_num_proc = 2,
+training_args = TrainingArguments(
+    per_device_train_batch_size=2,
+    gradient_accumulation_steps=8,
+    max_steps=200,
+    warmup_steps=20,
+    learning_rate=5e-5,
+    fp16=not is_bfloat16_supported(),
+    bf16=is_bfloat16_supported(),
+    logging_steps=1,
+    optim="adamw_8bit",
+    weight_decay=0.01,
+    lr_scheduler_type="linear",
+    seed=3407,
+    output_dir="outputs",
+    report_to="none",
+)
 
-    args = UnslothTrainingArguments(
-        per_device_train_batch_size = 2,
-        gradient_accumulation_steps = 8,
-
-        # Adjust these for your training run
-        max_steps = 200,  # Increase for better results
-        warmup_steps = 20,
-        # warmup_ratio = 0.1,
-        # num_train_epochs = 3,
-
-        # Learning rate settings for domain adaptation
-        learning_rate = 5e-5,
-        embedding_learning_rate = 1e-5,  # Lower learning rate for embeddings
-
-        fp16 = not is_bfloat16_supported(),
-        bf16 = is_bfloat16_supported(),
-        logging_steps = 1,
-        optim = "adamw_8bit",
-        weight_decay = 0.01,
-        lr_scheduler_type = "linear",
-        seed = 3407,
-        output_dir = "outputs",
-        report_to = "none",  # Set to "wandb" if you want to use Weights & Biases
-    ),
+trainer = Trainer(
+    model=model,
+    args=training_args,
+    train_dataset=tokenized_dataset,
+    data_collator=data_collator,
 )
 
 # Show current memory stats
